@@ -1,0 +1,122 @@
+.panel-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.panel-header {
+  display: flex;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.panel-header button {
+  flex: 1;
+  padding: 15px;
+  border: none;
+  background: none;
+  font-weight: bold;
+  cursor: pointer;
+  color: #666;
+  font-size: 14px;
+}
+
+.panel-header button.active {
+  color: #2196F3;
+  border-bottom: 3px solid #2196F3;
+}
+
+.panel-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.clima-info {
+  background-color: #e3f2fd;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0d47a1;
+}
+
+.categoria-chips {
+  display: flex;
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.chip {
+  background-color: #f5f5f5;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tarjeta-min {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 15px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.tarjeta-min:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.tarjeta-min h4 { margin: 0 0 5px 0; color: #333; }
+.tarjeta-min p { margin: 0; font-size: 12px; color: #666; }
+
+/* --- ESTILOS DEL CHAT --- */
+.chat-section { 
+  display: flex; 
+  flex-direction: column; 
+  /* Forzamos a que la sección del chat ocupe toda la pantalla menos el encabezado */
+  height: calc(100vh - 100px); 
+}
+
+.historial-chat { 
+  flex: 1; /* Esto hace toda la magia: se estira y empuja el input hacia abajo */
+  overflow-y: auto; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 15px; 
+  padding-bottom: 15px;
+}
+
+.mensaje-contenedor { display: flex; width: 100%; }
+.mensaje-contenedor.es-usuario { justify-content: flex-end; }
+
+.mensaje { 
+  padding: 12px 15px; 
+  border-radius: 8px; 
+  font-size: 14px; 
+  max-width: 85%; 
+  line-height: 1.4;
+}
+.mensaje.bot { background: #f1f1f1; color: #333; border-bottom-left-radius: 0; }
+.mensaje.usuario { background: #2196F3; color: white; border-bottom-right-radius: 0; }
+
+.input-chat { 
+  display: flex; 
+  gap: 10px; 
+  margin-top: auto; /* Ancla la caja al fondo */
+  padding-top: 15px;
+  border-top: 1px solid #eee; /* Una línea sutil para separar el chat */
+}
+
+.input-chat input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 6px; }
+.btn-enviar { background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+/* Detalle UI */
+.btn-regresar { background: none; border: none; color: #2196F3; cursor: pointer; margin-bottom: 15px; padding: 0; }
+.badge { background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+.descripcion { color: #555; font-size: 14px; line-height: 1.4; margin: 15px 0; }
+.info-extra { background: #fafafa; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 20px; }
+.acciones-detalle { display: flex; gap: 10px; }
+.acciones-detalle button { flex: 1; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; border: none; }
+.btn-fav { background: #ffebee; color: #c62828; }
+.btn-ruta { background: #2196F3; color: white; }

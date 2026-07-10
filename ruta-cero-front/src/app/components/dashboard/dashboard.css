@@ -1,0 +1,27 @@
+.dashboard-container {
+  display: flex !important; /* Fuerza a que los componentes se pongan uno al lado del otro */
+  flex-direction: row !important;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.map-area {
+  flex: 7; /* Ocupa el 70% de la pantalla */
+  height: 100vh;
+  position: relative;
+  background-color: #e5e3df; /* Color gris base por si el mapa tarda en cargar */
+}
+
+.panel-area {
+  flex: 3; /* Ocupa el 30% de la pantalla */
+  height: 100vh;
+  box-shadow: -3px 0 10px rgba(0,0,0,0.15);
+  background-color: #ffffff;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}

@@ -1,0 +1,14 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Forzar a que las etiquetas de Angular no colapsen el diseño */
+app-dashboard, app-mapa, app-panel-lateral {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
