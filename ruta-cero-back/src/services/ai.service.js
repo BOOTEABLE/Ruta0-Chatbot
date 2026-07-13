@@ -6,48 +6,39 @@ dotenv.config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-export const procesarMensaje = async (mensaje, lat, lng) => {
-    try {
-        let lugares = [];
+/**
+ * @typedef {Object} LugarDB
+ * @property {string} nombre
+ * @property {string} categoria
+ * @property {string} descripcion
+ * @property {string|null} horario
+ * @property {string|null} precio
+ * @property {number} latitud
+ * @property {number} longitud
+ * @property {number} confianza
+ */
 
-        // 1. Buscamos a un radio de 2km (2000 metros) usando PostGIS
-        if (lat && lng) {
-            console.log(`📍 Buscando a 2km de: Lat ${lat}, Lng ${lng}...`);
-            const query = `
-                SELECT * FROM lugares 
-                WHERE ST_DWithin(
-                    ubicacion::geography, 
-                    ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 
-                    2000 
-                ) LIMIT 30; -- Limitamos a 30 para no saturar a la IA
-            `;
-            const resultadoDB = await pool.query(query, [lng, lat]);
-            lugares = resultadoDB.rows;
-        } else {
-            console.log("⚠️ No hay GPS. Buscando lugares aleatorios...");
-            const resultadoDB = await pool.query('SELECT * FROM lugares LIMIT 30;');
-            lugares = resultadoDB.rows;
-        }
+/**
+ * @typedef {Object} ProcesarMensajeResult
+ * @property {string} respuesta
+ * @property {LugarDB[]} lugaresFisicos
+ */
 
-        // 2. Formateamos los datos
-        let lugaresTexto = "Actualmente no hay lugares registrados cerca de esta ubicación.";
-        if (lugares.length > 0) {
-            lugaresTexto = lugares.map(
-                lugar => `- **${lugar.nombre}** (${lugar.categoria}): ${lugar.descripcion}`
-            ).join('\n');
-        }
+const MODEL_NAME = 'gemini-2.5-flash';
+const SEARCH_RADIUS_METERS = 2000;
+const MAX_PLACES_FOR_PROMPT = 20;
 
-        // 3. CAPA DE INTELIGENCIA: Gemini 2.5 Flash + Búsqueda en Internet
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.5-flash",
-            tools: [{ googleSearch: {} }] // ¡Encendemos el internet!
-        });
+function buildPlacesText(lugares) {
+  if (lugares.length === 0) {
+    return 'Actualmente no hay lugares registrados cerca de esta ubicación.';
+  }
+  return lugares.map(l =>
+    `- **${l.nombre}** (${l.categoria})${l.precio ? ` - ${l.precio}` : ''}: ${l.descripcion}${l.horario ? ` | Horario: ${l.horario}` : ''}`
+  ).join('\n');
+}
 
-        // 4. EL RELOJ: Para que sepa si un lugar está abierto AHORA
-        const fechaActual = new Date().toLocaleString("es-EC", { timeZone: "America/Guayaquil" });
-
-        // 5. PROMPT MAESTRO (Ajustado a tu arquitectura)
-        const promptContexto = `
+function buildPrompt(lugaresTexto, mensaje, fechaActual) {
+  return `
 Eres un asistente turístico experto de Ruta0.
 Fecha y hora actual: ${fechaActual}.
 
@@ -61,17 +52,79 @@ REGLAS ESTRICTAS:
 4. Sé conciso y honesto. Si no encuentras el horario en internet, dile al usuario que no pudiste confirmarlo.
 
 Mensaje del usuario: "${mensaje}"
-        `;
+  `.trim();
+}
 
-        console.log("🤖 Consultando a Gemini 2.5 Flash con Grounding...");
-        const result = await model.generateContent(promptContexto);
-        return { 
-            respuesta: result.response.text(),
-            lugaresFisicos: lugares 
-        };
+function rankPlacesForPrompt(lugares) {
+  return [...lugares]
+    .sort((a, b) => {
+      const confDiff = b.confianza - a.confianza;
+      if (confDiff !== 0) return confDiff;
+      const horarioDiff = (b.horario ? 1 : 0) - (a.horario ? 1 : 0);
+      if (horarioDiff !== 0) return horarioDiff;
+      return (b.precio ? 1 : 0) - (a.precio ? 1 : 0);
+    })
+    .slice(0, MAX_PLACES_FOR_PROMPT);
+}
 
-    } catch (error) {
-        console.error("❌ Error en el servicio de IA:", error);
-        throw new Error("No pudimos contactar a la IA o a la Base de Datos");
+function buildPlacesQuery(lat, lng) {
+  return {
+    text: `
+      SELECT * FROM lugares 
+      WHERE ST_DWithin(
+        ubicacion::geography, 
+        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 
+        $3
+      ) ORDER BY confianza DESC LIMIT $4;
+    `,
+    values: [lng, lat, SEARCH_RADIUS_METERS, MAX_PLACES_FOR_PROMPT * 2]
+  };
+}
+
+function buildRandomPlacesQuery() {
+  return {
+    text: 'SELECT * FROM lugares ORDER BY confianza DESC LIMIT $1;',
+    values: [MAX_PLACES_FOR_PROMPT * 2]
+  };
+}
+
+export const procesarMensaje = async (mensaje, lat, lng) => {
+  try {
+    let lugares = [];
+
+    if (lat && lng) {
+      console.log(`📍 Buscando a 2km de: Lat ${lat}, Lng ${lng}...`);
+      const query = buildPlacesQuery(lat, lng);
+      const resultadoDB = await pool.query(query.text, query.values);
+      lugares = resultadoDB.rows;
+    } else {
+      console.log('⚠️ No hay GPS. Buscando lugares aleatorios...');
+      const query = buildRandomPlacesQuery();
+      const resultadoDB = await pool.query(query.text, query.values);
+      lugares = resultadoDB.rows;
     }
+
+    const lugaresParaPrompt = rankPlacesForPrompt(lugares);
+    const lugaresTexto = buildPlacesText(lugaresParaPrompt);
+    const fechaActual = new Date().toLocaleString('es-EC', { timeZone: 'America/Guayaquil' });
+
+    const model = genAI.getGenerativeModel({
+      model: MODEL_NAME,
+      tools: [{ googleSearch: {} }]
+    });
+
+    const prompt = buildPrompt(lugaresTexto, mensaje, fechaActual);
+
+    console.log('🤖 Consultando a Gemini 2.5 Flash con Grounding...');
+    const result = await model.generateContent(prompt);
+
+    return {
+      respuesta: result.response.text(),
+      lugaresFisicos: lugares
+    };
+
+  } catch (error) {
+    console.error('❌ Error en el servicio de IA:', error);
+    throw new Error('No pudimos contactar a la IA o a la Base de Datos');
+  }
 };

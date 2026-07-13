@@ -2,7 +2,6 @@ import { pool } from './db.js';
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
-// 1. EXTRACT: Definimos la consulta Overpass (Quito)
 const queryOSM = `
 [out:json][timeout:90];
 (
@@ -15,7 +14,19 @@ const queryOSM = `
 out center;
 `;
 
-const ejecutarETL = async () => {
+const calcularConfianza = (tags, categoria) => {
+    let puntaje = 0;
+    if (tags.name) puntaje += 30;
+    if (categoria !== 'Otros') puntaje += 20;
+    if (tags['addr:street'] || tags['addr:full']) puntaje += 15;
+    if (tags.opening_hours) puntaje += 10;
+    if (tags.phone || tags['contact:phone']) puntaje += 10;
+    if (tags.website || tags['contact:website']) puntaje += 10;
+    if (tags.description || tags.image) puntaje += 5;
+    return puntaje;
+};
+
+export const ejecutarETL = async ({ cerrarConexionAlFinal = true } = {}) => {
     try {
         console.log("⏳ [ETL] 1. Extrayendo datos desde OpenStreetMap (Overpass API)...");
         
@@ -40,6 +51,7 @@ const ejecutarETL = async () => {
         console.log("⏳ [ETL] 3. Cargando datos en PostgreSQL con PostGIS...");
 
         let insertados = 0;
+        let descartados = 0;
 
         for (const elemento of elementos) {
             if (!elemento.tags || !elemento.tags.name) continue;
@@ -53,7 +65,12 @@ const ejecutarETL = async () => {
             else if (elemento.tags.tourism === 'viewpoint') categoria = 'Miradores';
             else if (elemento.tags.leisure === 'park') categoria = 'Parques';
 
-            // 👇 NUEVO: Extraemos el horario de OpenStreetMap (si no existe, ponemos un valor por defecto)
+            const confianza = calcularConfianza(elemento.tags, categoria);
+            if (confianza < 50) {
+                descartados++;
+                continue;
+            }
+
             const horario = elemento.tags.opening_hours || 'Horario no disponible';
 
             const lat = elemento.lat || (elemento.center ? elemento.center.lat : null);
@@ -64,9 +81,8 @@ const ejecutarETL = async () => {
             const precio = elemento.tags.price_level === '1' ? '$' : elemento.tags.price_level === '3' ? '$$$' : '$$';
             const descripcion = elemento.tags.description || `Un fantástico lugar de categoría ${categoria} ubicado en Quito.`;
 
-            // 👇 NUEVO: Agregamos la columna 'horario' y el parámetro $7 a la consulta
             const queryInsert = `
-                INSERT INTO lugares (nombre, categoria, precio, descripcion, latitud, longitud, ubicacion, horario)
+                INSERT INTO lugares (nombre, categoria, precio, descripcion, latitud, longitud, ubicacion, horario, confianza, actualizado_en)
                 VALUES (
                     $1, 
                     $2, 
@@ -75,23 +91,36 @@ const ejecutarETL = async () => {
                     $5::numeric, 
                     $6::numeric, 
                     ST_SetSRID(ST_MakePoint($6::float, $5::float), 4326),
-                    $7
+                    $7,
+                    $8,
+                    now()
                 )
-                ON CONFLICT DO NOTHING;
+                ON CONFLICT (nombre) DO UPDATE SET
+                    categoria = EXCLUDED.categoria,
+                    precio = EXCLUDED.precio,
+                    descripcion = EXCLUDED.descripcion,
+                    horario = EXCLUDED.horario,
+                    confianza = EXCLUDED.confianza,
+                    actualizado_en = now();
             `;
 
-            // 👇 NUEVO: Pasamos la variable 'horario' al final del array
-            await pool.query(queryInsert, [nombre, categoria, precio, descripcion, lat, lng, horario]);
+            await pool.query(queryInsert, [nombre, categoria, precio, descripcion, lat, lng, horario, confianza]);
             insertados++;
         }
 
-        console.log(`✅ [ETL] ¡Proceso completado con éxito! Se cargaron ${insertados} lugares reales en tu base de datos.`);
+        console.log(`✅ [ETL] ¡Proceso completado! Se cargaron/actualizaron ${insertados} lugares. Se descartaron ${descartados} por baja confianza (<50 pts).`);
 
     } catch (error) {
         console.error("❌ [ETL] Error durante el proceso:", error.message);
     } finally {
-        pool.end(); 
+        if (cerrarConexionAlFinal) {
+            await pool.end();
+        }
     }
 };
 
-ejecutarETL();
+const main = async () => {
+    await ejecutarETL({ cerrarConexionAlFinal: true });
+};
+
+main();

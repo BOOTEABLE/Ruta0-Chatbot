@@ -27,16 +27,13 @@
       <div class="historial-chat">
         <div *ngFor="let msg of historial()" class="mensaje-contenedor" [class.es-usuario]="msg.emisor === 'usuario'">
           <div class="mensaje" [class.bot]="msg.emisor === 'bot'" [class.usuario]="msg.emisor === 'usuario'">
-            
             <span [innerHTML]="formatearMensaje(msg.texto)"></span>
-            
           </div>
         </div>
       </div>
       
       <div class="input-chat">
         <input #chatInput type="text" placeholder="Ej: Tengo $20 y 3 horas..." (keydown.enter)="enviarMensaje(chatInput.value, chatInput); $event.preventDefault()">
-        
         <button type="button" class="btn-enviar" (click)="enviarMensaje(chatInput.value, chatInput)">Enviar</button>
       </div>
     </div>
@@ -47,8 +44,8 @@
       <span class="badge">{{ lugarSeleccionado()?.categoria }}</span>
       <p class="descripcion">{{ lugarSeleccionado()?.descripcion }}</p>
       <div class="info-extra">
-        <p>🕒 Horario: 09:00 AM - 07:00 PM</p>
-        <p>💰 Presupuesto: Económico</p>
+        <p>🕒 Horario: {{ lugarSeleccionado()?.horario || 'No disponible' }}</p>
+        <p>💰 Presupuesto: {{ lugarSeleccionado()?.precio || 'No especificado' }}</p>
       </div>
       <div class="acciones-detalle">
         <button class="btn-fav">❤️ Guardar en Favoritos</button>

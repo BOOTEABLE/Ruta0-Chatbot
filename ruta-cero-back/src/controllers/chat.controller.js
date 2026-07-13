@@ -1,19 +1,22 @@
 import { pool } from '../repositories/db.js';
 import { procesarMensaje } from '../services/ai.service.js';
 
-// 🚦 EL CLASIFICADOR (Semáforo)
+const normalizarTexto = (texto) => {
+    return texto.toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+};
+
 const clasificarIntencion = (mensaje) => {
-    const texto = mensaje.toLowerCase();
+    const texto = normalizarTexto(mensaje);
     
-    // 1. Palabras que SIEMPRE requieren análisis profundo o internet (Van a Gemini)
-    const palabrasComplejas = ['$', 'dólar', 'dolares', 'horas', 'tiempo', 'clima', 'llueve', 'lluvia', 'romántico', 'niños', 'mascota', 'recomienda', 'itinerario', 'plan', 'presupuesto'];
+    const palabrasComplejas = ['$', 'dolar', 'dolares', 'horas', 'tiempo', 'clima', 'llueve', 'lluvia', 'romantico', 'ninos', 'mascota', 'recomienda', 'itinerario', 'plan', 'presupuesto'];
     
     if (palabrasComplejas.some(pc => texto.includes(pc))) {
         return "GEMINI"; 
     }
 
-    // 2. Búsquedas directas (Van a PostgreSQL a costo $0)
-    const categoriasSimples = ['cafetería', 'cafeteria', 'restaurante', 'parque', 'museo', 'mirador', 'mostrar', 'buscar', 'dime'];
+    const categoriasSimples = ['cafeteria', 'cafe', 'restaurante', 'parque', 'museo', 'mirador', 'mostrar', 'buscar', 'dime'];
     
     if (texto.length < 40 || categoriasSimples.some(cs => texto.includes(cs))) {
         return "POSTGRESQL"; 
@@ -22,7 +25,6 @@ const clasificarIntencion = (mensaje) => {
     return "GEMINI"; 
 };
 
-// ⚙️ EL ENRUTADOR (Controlador principal)
 export const enviarMensajeChat = async (req, res) => {
     try {
         const { mensaje, lat, lng } = req.body;
@@ -31,21 +33,18 @@ export const enviarMensajeChat = async (req, res) => {
         console.log(`🚦 [Enrutador] Intención detectada: ${intencion}`);
 
         if (intencion === "POSTGRESQL") {
-            // ==========================================
-            // 🟢 VÍA RÁPIDA (0 TOKENS) - Búsqueda SQL
-            // ==========================================
             let query = '';
             let valores = [];
             
             let categoria = 'Otros';
-            if (mensaje.toLowerCase().includes('cafe')) categoria = 'Cafeterías';
-            else if (mensaje.toLowerCase().includes('restaurante') || mensaje.toLowerCase().includes('comer')) categoria = 'Gastronomía';
-            else if (mensaje.toLowerCase().includes('museo')) categoria = 'Cultura';
-            else if (mensaje.toLowerCase().includes('parque')) categoria = 'Parques';
-            else if (mensaje.toLowerCase().includes('mirador')) categoria = 'Miradores';
+            const textoNormalizado = normalizarTexto(mensaje); // úsalo en vez de mensaje.toLowerCase()
+        if (textoNormalizado.includes('cafe')) categoria = 'Cafeterías';
+            else if (textoNormalizado.includes('restaurante') || textoNormalizado.includes('comer')) categoria = 'Gastronomía';
+            else if (textoNormalizado.includes('museo')) categoria = 'Cultura';
+            else if (textoNormalizado.includes('parque')) categoria = 'Parques';
+            else if (textoNormalizado.includes('mirador')) categoria = 'Miradores';
 
             if (lat && lng) {
-                // 👇 NUEVO: Añadimos latitud, longitud y horario a la consulta SQL
                 query = `
                     SELECT nombre, categoria, descripcion, precio, latitud, longitud, horario FROM lugares 
                     WHERE categoria = $1 
@@ -54,7 +53,6 @@ export const enviarMensajeChat = async (req, res) => {
                 `;
                 valores = [categoria, lng, lat];
             } else {
-                // 👇 NUEVO: Aquí también añadimos latitud, longitud y horario
                 query = `SELECT nombre, categoria, descripcion, precio, latitud, longitud, horario FROM lugares WHERE categoria = $1 LIMIT 5;`;
                 valores = [categoria];
             }
@@ -72,19 +70,13 @@ export const enviarMensajeChat = async (req, res) => {
 
             const textoRespuesta = lugares.map(l => `- **${l.nombre}** (Precio: ${l.precio}): ${l.descripcion}`).join('\n\n');
             
-            // 👇 NUEVO: Devolvemos el texto Y la lista de objetos geográficos completa para Angular
             return res.json({ 
                 respuesta: `*¡Consulta rápida (0 Tokens)!* ⚡\n\nAquí tienes algunas opciones de ${categoria} cerca de ti:\n\n${textoRespuesta}`,
                 lugaresFisicos: lugares 
             });
 
         } else {
-            // ==========================================
-            // 🧠 VÍA INTELIGENTE (GEMINI) - Gasta Tokens
-            // ==========================================
             const respuestaIA = await procesarMensaje(mensaje, lat, lng);
-            
-            // 👇 NUEVO: Retornamos directamente lo que entrega la IA (que ya incluye respuesta y lugaresFisicos)
             return res.json(respuestaIA); 
         }
 
